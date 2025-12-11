@@ -468,12 +468,12 @@ async function openRemoveMappingMode() {
             };
         });
         
-        // Build piano keyboard
+        // Build piano keyboard - EXACT SAME LAYOUT AS KEY ASSIGNMENT VIEW
         let html = '<div class="piano-container">';
-        html += '<div style="text-align: center; color: #999; margin-bottom: 10px;">Click mapped keys to remove products • Hover to see product details</div>';
+        html += '<div style="text-align: center; color: #999; margin-bottom: 10px;">88 Keys • A0 (21) to C8 (108) • Scroll horizontally → <span style="color: #27ae60;">■ Green = Mapped (click to remove)</span></div>';
         html += '<div class="piano-keys">';
         
-        // Render white keys
+        // Render all white keys with equal spacing
         for (let midi = 21; midi <= 108; midi++) {
             const noteIndex = midi % 12;
             const isWhiteKey = [0, 2, 4, 5, 7, 9, 11].includes(noteIndex);
@@ -481,15 +481,16 @@ async function openRemoveMappingMode() {
             if (isWhiteKey) {
                 const octave = Math.floor(midi / 12) - 1;
                 const noteName = notes[noteIndex] + octave;
+                const isMiddleC = midi === 60;
                 const hasMapp = removeMappingData[midi] !== undefined;
                 
                 let tooltip = `MIDI ${midi} = ${noteName}`;
                 if (hasMapp) {
                     const mapping = removeMappingData[midi];
-                    tooltip += `\n${mapping.product_name}\nAmount: ${mapping.amount}\nClick to remove`;
+                    tooltip += ` - ${mapping.product_name} (${mapping.amount}) - Click to remove`;
                 }
                 
-                html += `<div class="white-key ${hasMapp ? 'mapped' : ''}" 
+                html += `<div class="white-key ${isMiddleC ? 'middle-c' : ''} ${hasMapp ? 'mapped' : ''}" 
                     onclick="removeMappingFromKey(${midi})" 
                     data-note="${midi}" 
                     title="${tooltip}"
@@ -500,7 +501,65 @@ async function openRemoveMappingMode() {
             }
         }
         
-        html += '</div></div>';
+        // Render black keys positioned on top - EXACT SAME AS KEY ASSIGNMENT VIEW
+        for (let midi = 21; midi <= 108; midi++) {
+            const noteIndex = midi % 12;
+            const isBlackKey = [1, 3, 6, 8, 10].includes(noteIndex);
+            
+            if (isBlackKey) {
+                const octave = Math.floor(midi / 12) - 1;
+                const noteName = notes[noteIndex] + octave;
+                const hasMapp = removeMappingData[midi] !== undefined;
+                
+                // Calculate which white key this black key comes after
+                let whiteKeysBefore = 0;
+                for (let note = 21; note <= midi; note++) {
+                    const nIdx = note % 12;
+                    if ([0, 2, 4, 5, 7, 9, 11].includes(nIdx)) {
+                        whiteKeysBefore++;
+                    }
+                }
+                whiteKeysBefore = whiteKeysBefore - 1;
+                
+                // Position black key based on real piano layout
+                const whiteKeyWidth = 42;
+                
+                let positionOffset;
+                if (noteIndex === 1) { // C#
+                    positionOffset = whiteKeyWidth * 0.75;
+                } else if (noteIndex === 3) { // D#
+                    positionOffset = whiteKeyWidth * 0.85;
+                } else if (noteIndex === 6) { // F#
+                    positionOffset = whiteKeyWidth * 0.72;
+                } else if (noteIndex === 8) { // G#
+                    positionOffset = whiteKeyWidth * 0.80;
+                } else { // A# (10)
+                    positionOffset = whiteKeyWidth * 0.88;
+                }
+                
+                const leftPosition = (whiteKeysBefore * whiteKeyWidth) + positionOffset;
+                
+                let tooltip = `MIDI ${midi} = ${noteName}`;
+                if (hasMapp) {
+                    const mapping = removeMappingData[midi];
+                    tooltip += ` - ${mapping.product_name} (${mapping.amount}) - Click to remove`;
+                }
+                
+                html += `<div class="black-key ${hasMapp ? 'mapped' : ''}" 
+                    onclick="removeMappingFromKey(${midi})" 
+                    data-note="${midi}" 
+                    title="${tooltip}"
+                    onmouseenter="showRemoveMappingPreview(${midi}, event)"
+                    onmouseleave="hideRemoveMappingPreview()"
+                    style="left: ${leftPosition}px;">
+                    <span class="key-label">${noteName}</span>
+                </div>`;
+            }
+        }
+        
+        html += '</div>';
+        html += '<div class="octave-label">Complete 88-key keyboard • Middle C (C4, note 60) highlighted in red</div>';
+        html += '</div>';
         
         // Add preview tooltip container
         html += '<div id="removeMappingPreview" style="display: none; position: fixed; background: white; border: 2px solid #333; border-radius: 8px; padding: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); z-index: 10000; max-width: 250px;"></div>';
