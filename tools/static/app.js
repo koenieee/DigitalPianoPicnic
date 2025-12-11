@@ -27,14 +27,14 @@ function initPianoKeys() {
     const container = document.getElementById('pianoDisplay');
     
     // Create full 88-key keyboard (A0 to C8) in one horizontal line
-    html += '<div class="piano-container">';
+    let html = '<div class="piano-container">';
     html += '<div style="text-align: center; color: #999; margin-bottom: 10px;">88 Keys • A0 (21) to C8 (108) • Scroll horizontally → <span style="color: #4caf50;">■ Green = Already Mapped</span><br><span style="color: #667eea; font-weight: bold;">⌨️ Use your keyboard: QWERTY rows = different octaves, ZXC/ASD/QWE keys = white keys</span></div>';
     html += '<div class="piano-keys">';
     
     // Count total white keys (52 for 88-key piano: A0-B0 + 7 octaves + C8)
     const whiteKeys = [];
     for (let midi = 21; midi <= 108; midi++) {
-        const noteIndex = (midi - 12) % 12;
+        const noteIndex = midi % 12;
         const isWhiteKey = [0, 2, 4, 5, 7, 9, 11].includes(noteIndex);
         if (isWhiteKey) {
             whiteKeys.push(midi);
@@ -43,47 +43,79 @@ function initPianoKeys() {
     const totalWhiteKeys = whiteKeys.length; // Should be 52
     
     // Render all white keys with equal spacing
+    const debugKeys = [];
+    const allKeys = [];
     for (let midi = 21; midi <= 108; midi++) {
-        const noteIndex = (midi - 12) % 12;
+        const noteIndex = midi % 12;
         const isWhiteKey = [0, 2, 4, 5, 7, 9, 11].includes(noteIndex);
         
         if (isWhiteKey) {
-            const octave = Math.floor((midi - 12) / 12);
+            const octave = Math.floor(midi / 12) - 1;
             const noteName = notes[noteIndex] + octave;
             const isMiddleC = midi === 60;
             const isMapped = mappedKeys.has(midi);
-            html += `<div class="white-key ${isMiddleC ? 'middle-c' : ''} ${isMapped ? 'mapped' : ''}" onclick="selectKey(${midi})" data-note="${midi}" title="${isMapped ? 'Already mapped' : 'Click to assign'}">
+            
+            // Debug: Store first 10 keys for logging
+            if (debugKeys.length < 10) {
+                debugKeys.push(`${noteName}=${midi}`);
+            }
+            
+            // Store ALL keys for additional debugging
+            allKeys.push({midi, noteName, noteIndex, octave});
+            
+            html += `<div class="white-key ${isMiddleC ? 'middle-c' : ''} ${isMapped ? 'mapped' : ''}" onclick="selectKey(${midi})" data-note="${midi}" title="MIDI ${midi} = ${noteName} - ${isMapped ? 'Already mapped' : 'Click to assign'}">
                 <span class="key-label">${noteName}</span>
             </div>`;
         }
     }
     
+    console.log('First 10 white keys rendered:', debugKeys.join(', '));
+    console.log('Keys around Middle C:', allKeys.slice(20, 28).map(k => `${k.noteName}=${k.midi}`).join(', '));
+    
     // Black keys disabled for now (only white keys can be assigned)
     // Then, render black keys positioned on top
     for (let midi = 21; midi <= 108; midi++) {
-        const noteIndex = (midi - 12) % 12;
+        const noteIndex = midi % 12;
         const isBlackKey = [1, 3, 6, 8, 10].includes(noteIndex);
         
         if (isBlackKey) {
-            const octave = Math.floor((midi - 12) / 12);
+            const octave = Math.floor(midi / 12) - 1;
             const noteName = notes[noteIndex] + octave;
             const isMapped = mappedKeys.has(midi);
             
-            // Calculate position: count white keys before this black key
+            // Calculate which white key this black key comes after
+            // For black keys, we need to count white keys up to and including the previous white key
             let whiteKeysBefore = 0;
-            for (let note = 21; note < midi; note++) {
-                const nIdx = (note - 12) % 12;
+            for (let note = 21; note <= midi; note++) {
+                const nIdx = note % 12;
                 if ([0, 2, 4, 5, 7, 9, 11].includes(nIdx)) {
                     whiteKeysBefore++;
                 }
             }
+            // Subtract 1 because we want the white key BEFORE this black key
+            whiteKeysBefore = whiteKeysBefore - 1;
             
-            // Position between two white keys using pixel offset
-            // Each white key is 40px + 2px margin = 42px total
-            // Black key should be centered between white keys
+            // Position black key based on real piano layout
+            // Each white key is 40px + 2px margin = 42px
             const whiteKeyWidth = 42;
             const blackKeyWidth = 28;
-            const leftPosition = (whiteKeysBefore * whiteKeyWidth) + (whiteKeyWidth - blackKeyWidth / 2);
+            
+            // Black keys are positioned to create visual groups: [C# D#] gap [F# G# A#] gap
+            // C# is between C-D, D# between D-E, F# between F-G, G# between G-A, A# between A-B
+            let positionOffset;
+            if (noteIndex === 1) { // C# - slightly left of center between C and D
+                positionOffset = whiteKeyWidth * 0.75;
+            } else if (noteIndex === 3) { // D# - slightly right of center between D and E
+                positionOffset = whiteKeyWidth * 0.85;
+            } else if (noteIndex === 6) { // F# - slightly left in the group of 3
+                positionOffset = whiteKeyWidth * 0.72;
+            } else if (noteIndex === 8) { // G# - center of the group of 3
+                positionOffset = whiteKeyWidth * 0.80;
+            } else { // A# (10) - slightly right in the group of 3
+                positionOffset = whiteKeyWidth * 0.88;
+            }
+            
+            const leftPosition = (whiteKeysBefore * whiteKeyWidth) + positionOffset;
             
             html += `<div class="black-key ${isMapped ? 'mapped' : ''}" style="left: ${leftPosition}px; pointer-events: none; opacity: 0.5;" title="Black keys disabled for now">
                 <span class="key-label">${noteName}</span>
@@ -348,6 +380,224 @@ function closeCart() {
     document.getElementById('cartModal').style.display = 'none';
 }
 
+async function viewConfiguredKeys() {
+    const modal = document.getElementById('configuredKeysModal');
+    const content = document.getElementById('configuredKeysContent');
+    modal.style.display = 'flex';
+    content.innerHTML = '<p style="text-align: center; color: #666;">Loading configured keys...</p>';
+    
+    try {
+        const response = await fetch('/api/print-data');
+        if (!response.ok) throw new Error('Failed to load configured keys');
+        
+        const data = await response.json();
+        const mappings = data.mappings || [];
+        
+        if (mappings.length === 0) {
+            content.innerHTML = '<p style="text-align: center; color: #999; padding: 40px;">🎹 No keys configured yet</p>';
+            return;
+        }
+        
+        // Sort by MIDI note number
+        mappings.sort((a, b) => a.note - b.note);
+        
+        let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">';
+        
+        for (const mapping of mappings) {
+            html += '<div style="border: 2px solid #667eea; border-radius: 12px; padding: 15px; background: linear-gradient(to bottom, #ffffff, #f8f9ff); position: relative;">';
+            
+            // Key info header
+            html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">';
+            html += '<div style="font-weight: bold; color: #667eea; font-size: 1.1em;">🎹 ' + mapping.note_name + ' (MIDI ' + mapping.note + ')</div>';
+            html += '<button onclick="deleteMapping(' + mapping.note + ')" style="background: #e74c3c; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold;">🗑️ Delete</button>';
+            html += '</div>';
+            
+            // Product image
+            if (mapping.image) {
+                html += '<div style="text-align: center; margin: 10px 0;">';
+                html += '<img src="' + mapping.image + '" alt="' + mapping.product_name + '" style="width: 100px; height: 100px; object-fit: contain; border: 1px solid #e0e0e0; border-radius: 8px; background: white;" />';
+                html += '</div>';
+            }
+            
+            // Product details
+            html += '<div style="margin-top: 10px;">';
+            html += '<div style="font-weight: bold; color: #333; margin-bottom: 5px;">' + mapping.product_name + '</div>';
+            html += '<div style="color: #666; font-size: 0.85em;">Product ID: ' + mapping.product_id + '</div>';
+            html += '<div style="color: #666; font-size: 0.85em; margin-top: 3px;">Amount: ' + mapping.amount + '</div>';
+            html += '</div>';
+            
+            html += '</div>';
+        }
+        
+        html += '</div>';
+        content.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Error loading configured keys:', error);
+        content.innerHTML = '<p style="text-align: center; color: #e74c3c; padding: 40px;">❌ Error loading configured keys: ' + error.message + '</p>';
+    }
+}
+
+function closeConfiguredKeys() {
+    document.getElementById('configuredKeysModal').style.display = 'none';
+}
+
+let removeMappingData = {};
+
+async function openRemoveMappingMode() {
+    const modal = document.getElementById('removeMappingModal');
+    const container = document.getElementById('removePianoDisplay');
+    modal.style.display = 'flex';
+    container.innerHTML = '<p style="text-align: center; color: #666;">Loading mappings...</p>';
+    
+    try {
+        const response = await fetch('/api/print-data');
+        if (!response.ok) throw new Error('Failed to load mappings');
+        
+        const data = await response.json();
+        const mappings = data.mappings || [];
+        
+        // Create a map of note -> mapping
+        removeMappingData = {};
+        mappings.forEach(m => {
+            removeMappingData[m.note] = {
+                product_name: m.product_name,
+                product_id: m.product_id,
+                image: m.image,
+                amount: m.amount
+            };
+        });
+        
+        // Build piano keyboard
+        let html = '<div class="piano-container">';
+        html += '<div style="text-align: center; color: #999; margin-bottom: 10px;">Click mapped keys to remove products • Hover to see product details</div>';
+        html += '<div class="piano-keys">';
+        
+        // Render white keys
+        for (let midi = 21; midi <= 108; midi++) {
+            const noteIndex = midi % 12;
+            const isWhiteKey = [0, 2, 4, 5, 7, 9, 11].includes(noteIndex);
+            
+            if (isWhiteKey) {
+                const octave = Math.floor(midi / 12) - 1;
+                const noteName = notes[noteIndex] + octave;
+                const hasMapp = removeMappingData[midi] !== undefined;
+                
+                let tooltip = `MIDI ${midi} = ${noteName}`;
+                if (hasMapp) {
+                    const mapping = removeMappingData[midi];
+                    tooltip += `\n${mapping.product_name}\nAmount: ${mapping.amount}\nClick to remove`;
+                }
+                
+                html += `<div class="white-key ${hasMapp ? 'mapped' : ''}" 
+                    onclick="removeMappingFromKey(${midi})" 
+                    data-note="${midi}" 
+                    title="${tooltip}"
+                    onmouseenter="showRemoveMappingPreview(${midi}, event)"
+                    onmouseleave="hideRemoveMappingPreview()">
+                    <span class="key-label">${noteName}</span>
+                </div>`;
+            }
+        }
+        
+        html += '</div></div>';
+        
+        // Add preview tooltip container
+        html += '<div id="removeMappingPreview" style="display: none; position: fixed; background: white; border: 2px solid #333; border-radius: 8px; padding: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); z-index: 10000; max-width: 250px;"></div>';
+        
+        container.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Error loading remove mapping mode:', error);
+        container.innerHTML = '<p style="text-align: center; color: #e74c3c; padding: 40px;">❌ Error: ' + error.message + '</p>';
+    }
+}
+
+function showRemoveMappingPreview(midiNote, event) {
+    const mapping = removeMappingData[midiNote];
+    if (!mapping) return;
+    
+    const preview = document.getElementById('removeMappingPreview');
+    if (!preview) return;
+    
+    let html = '<div style="text-align: center;">';
+    if (mapping.image) {
+        html += `<img src="${mapping.image}" style="width: 100px; height: 100px; object-fit: contain; margin-bottom: 8px;" />`;
+    }
+    html += `<div style="font-weight: bold; margin-bottom: 4px;">${mapping.product_name}</div>`;
+    html += `<div style="font-size: 0.9em; color: #666;">Amount: ${mapping.amount}</div>`;
+    html += '<div style="margin-top: 8px; color: #e74c3c; font-weight: bold;">Click to remove</div>';
+    html += '</div>';
+    
+    preview.innerHTML = html;
+    preview.style.display = 'block';
+    preview.style.left = (event.pageX + 15) + 'px';
+    preview.style.top = (event.pageY - 50) + 'px';
+}
+
+function hideRemoveMappingPreview() {
+    const preview = document.getElementById('removeMappingPreview');
+    if (preview) {
+        preview.style.display = 'none';
+    }
+}
+
+async function removeMappingFromKey(midiNote) {
+    const mapping = removeMappingData[midiNote];
+    if (!mapping) return;
+    
+    if (!confirm(`Remove "${mapping.product_name}" from this key?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/mapping/' + midiNote, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to delete mapping');
+        }
+        
+        // Reload the remove mapping view
+        openRemoveMappingMode();
+        
+    } catch (error) {
+        console.error('Error deleting mapping:', error);
+        alert('Error deleting mapping: ' + error.message);
+    }
+}
+
+function closeRemoveMappingMode() {
+    document.getElementById('removeMappingModal').style.display = 'none';
+    hideRemoveMappingPreview();
+}
+
+async function deleteMapping(midiNote) {
+    if (!confirm('Are you sure you want to delete this key mapping?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/mapping/' + midiNote, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to delete mapping');
+        }
+        
+        // Reload the configured keys view
+        viewConfiguredKeys();
+        
+    } catch (error) {
+        console.error('Error deleting mapping:', error);
+        alert('Error deleting mapping: ' + error.message);
+    }
+}
+
 function assignKeyFromCart(productId, productName, quantity, imageId) {
     console.log('assignKeyFromCart:', productId, productName, quantity, imageId);
     // Close cart modal and open key picker
@@ -379,9 +629,9 @@ async function openPrintableOverlay() {
         .cut-line-bottom { position: absolute; width: 100%; height: 0; border-top: 2px dashed #ff0000; bottom: 0; left: 0; z-index: 1; }
         .key-marker { position: absolute; width: 1px; height: 100%; border-left: 1px dotted #999; top: 0; z-index: 2; }
         .key-marker-label { position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%); font-size: 6px; color: #666; background: white; padding: 1px 2px; border-radius: 2px; }
-        .product-box { position: absolute; display: flex; flex-direction: column; align-items: center; padding: 1mm; background: white; border: 1.5px solid #333; border-radius: 2mm; box-shadow: 0 1px 3px rgba(0,0,0,0.2); width: 17mm; top: 2mm; transform: translateX(-50%); z-index: 3; }
-        .product-box .product-name { font-size: 7px; color: #333; margin-bottom: 0.5mm; word-wrap: break-word; line-height: 1.0; font-weight: bold; text-align: center; max-height: 5mm; overflow: hidden; }
-        .product-box img { width: 15mm; height: 15mm; object-fit: contain; display: block; }
+        .product-box { position: absolute; display: flex; flex-direction: column; align-items: center; padding: 0.5mm; background: white; border: 1.5px solid #333; border-radius: 2mm; box-shadow: 0 1px 3px rgba(0,0,0,0.2); width: 13mm; top: 2mm; transform: translateX(-50%); z-index: 3; }
+        .product-box .product-name { font-size: 6px; color: #333; margin-bottom: 0.3mm; word-wrap: break-word; line-height: 1.0; font-weight: bold; text-align: center; max-height: 4mm; overflow: hidden; }
+        .product-box img { width: 12mm; height: 12mm; object-fit: contain; display: block; }
         .connector-line { position: absolute; background: #333; z-index: 2; }
         .connector-vertical { width: 1px; height: 3mm; top: 18mm; }
         .connector-horizontal { height: 1px; top: 21mm; }
@@ -452,8 +702,8 @@ async function openPrintableOverlay() {
                     const relativePos = keyPositionMm - pageStartMm;
                     const positionPercent = (relativePos / pageWidth) * 100;
                     const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-                    const octave = Math.floor((midiNote - 12) / 12);
-                    const noteIndex = (midiNote - 12) % 12;
+                    const octave = Math.floor(midiNote / 12) - 1;
+                    const noteIndex = midiNote % 12;
                     const noteName = notes[noteIndex] + octave;
                     
                     keyPositionsOnPage.push({
@@ -558,6 +808,14 @@ function getKeyPositionMm(midiNote) {
 }
 
 function selectKey(noteNumber) {
+    console.log('selectKey called with noteNumber:', noteNumber, 'type:', typeof noteNumber);
+    
+    // Calculate note name for debugging
+    const noteIndex = noteNumber % 12;
+    const octave = Math.floor(noteNumber / 12) - 1;
+    const noteName = notes[noteIndex] + octave;
+    console.log('This corresponds to:', noteName, '(MIDI', noteNumber + ')');
+    
     closeKeyPicker();
     
     // If this is from a search result (index >= 0), update the input field
@@ -569,7 +827,7 @@ function selectKey(noteNumber) {
     }
     
     // Auto-save with confirmation
-    if (confirm(`Assign "${currentProductName}" to piano key ${noteNumber}?`)) {
+    if (confirm(`Assign "${currentProductName}" to piano key ${noteName} (MIDI ${noteNumber})?`)) {
         // For cart items, use the stored quantity
         const amount = window.currentCartQuantity || 1;
         const doubleTap = true; // Default to true for safety

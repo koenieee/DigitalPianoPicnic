@@ -23,13 +23,18 @@ fi
 
 # Prompt for HA token if not already in service file
 if grep -q "your_token_here" "$SERVICE_FILE"; then
-    echo "⚠️  Warning: Service file contains placeholder token"
+    echo "⚠️  Warning: Service file contains placeholder credentials"
     echo ""
-    read -p "Enter your HA_TOKEN (or press Enter to edit manually): " HA_TOKEN
+    read -p "Enter your HA_TOKEN: " HA_TOKEN
+    read -p "Enter your PICNIC_USERNAME (email/phone): " PICNIC_USERNAME
+    read -s -p "Enter your PICNIC_PASSWORD: " PICNIC_PASSWORD
+    echo ""
     
-    if [ ! -z "$HA_TOKEN" ]; then
+    if [ ! -z "$HA_TOKEN" ] && [ ! -z "$PICNIC_USERNAME" ] && [ ! -z "$PICNIC_PASSWORD" ]; then
         sed -i "s/your_token_here/$HA_TOKEN/" "$SERVICE_FILE"
-        echo "   ✓ Token updated in service file"
+        sed -i "s/your_email_or_phone/$PICNIC_USERNAME/" "$SERVICE_FILE"
+        sed -i "s/your_password/$PICNIC_PASSWORD/" "$SERVICE_FILE"
+        echo "   ✓ Credentials updated in service file"
     else
         echo "   ⊙ Edit $SERVICE_FILE manually before enabling service"
     fi

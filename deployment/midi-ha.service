@@ -9,6 +9,8 @@ User=pi
 Group=pi
 WorkingDirectory=/home/pi/DigitalPianoPicnic
 Environment="HA_TOKEN=your_token_here"
+Environment="PICNIC_USERNAME=your_email_or_phone"
+Environment="PICNIC_PASSWORD=your_password"
 ExecStart=/home/pi/DigitalPianoPicnic/venv/bin/python3 /home/pi/DigitalPianoPicnic/src/bridge.py
 Restart=on-failure
 RestartSec=10

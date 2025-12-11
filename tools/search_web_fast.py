@@ -366,6 +366,57 @@ def save_mapping():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/mapping/<int:note>', methods=['DELETE'])
+def delete_mapping(note):
+    """Delete a key mapping from config"""
+    try:
+        import yaml
+        
+        print(f"\n🗑️ Deleting mapping for note: {note}")
+        print(f"Config path: {config_path}")
+        
+        if not config_path.exists():
+            print(f"✗ Config file not found at: {config_path}")
+            return jsonify({'error': 'Config file not found'}), 404
+        
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f) or {}
+        
+        note_mappings = config.get('note_mappings', {})
+        note_str = str(note)
+        
+        print(f"Available mappings: {list(note_mappings.keys())}")
+        print(f"Looking for note: '{note_str}' (type: {type(note_str)})")
+        
+        if note_str not in note_mappings:
+            # Try as integer key as well
+            if note not in note_mappings:
+                print(f"✗ Mapping not found. Keys in file: {list(note_mappings.keys())[:10]}")
+                return jsonify({'error': f'No mapping found for note {note}'}), 404
+            # Found as integer, use that
+            note_key = note
+        else:
+            note_key = note_str
+        
+        # Delete the mapping
+        print(f"Deleting key: '{note_key}'")
+        del note_mappings[note_key]
+        config['note_mappings'] = note_mappings
+        
+        # Save updated config with proper formatting
+        with open(config_path, 'w', encoding='utf-8') as f:
+            yaml.safe_dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False, width=120)
+        
+        print(f"✓ Deleted mapping for note {note}")
+        
+        return jsonify({'success': True, 'message': f'Deleted mapping for note {note}'})
+        
+    except Exception as e:
+        print(f"✗ Delete error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 def download_and_cache_image(product_id, image_id):
     """Download product image from Picnic CDN and cache as base64"""
     try:

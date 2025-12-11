@@ -6,6 +6,15 @@ ha:
   # Token source: 'env' to use HA_TOKEN environment variable, or 'file' for secrets.yaml
   token_source: env
 
+# Picnic API connection
+picnic:
+  # Country code: NL, DE, etc.
+  country_code: NL
+  
+  # Credentials are set via environment variables:
+  # PICNIC_USERNAME (email or phone number)
+  # PICNIC_PASSWORD
+
 # MIDI input configuration
 midi:
   # Port name: empty string for auto-select, or exact name like "Digital Piano USB"
@@ -85,7 +94,7 @@ announce:
   preannounce: false
   
   # Message template (use {product_name} placeholder)
-  message_template: "{product_name} was added to basket"
+  message_template: "{product_name} toegevoegd aan mandje!"
 
 # Path to note mapping file
 mapping_file: config/mapping.yaml

@@ -29,6 +29,7 @@ except ImportError:
 
 from midi import MidiInput, MidiEvent
 from ha_client import HAClient, ServiceCallResult
+from picnic_client import PicnicClient, ProductAddResult
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ class ProductMapping:
 class ArmingStateMachine:
     """Manages arming/disarming state with sequence and/or chord detection."""
     
-    def __init__(self, config: Dict[str, Any], ha_client: Optional['HAClient'] = None):
+    def __init__(self, config: Dict[str, Any], announce_config: Dict[str, Any] = None, ha_client: Optional['HAClient'] = None):
         self.enabled = config.get('enabled', True)
         self.sequence = config.get('sequence', [])
         self.sequence_timeout_ms = config.get('sequence_timeout_ms', 3000)
@@ -63,6 +64,7 @@ class ArmingStateMachine:
         self.disarm_after_add = config.get('disarm_after_add', False)
         
         # Announcement config
+        self.announce_config = announce_config or {}
         self.announce_on_arm = config.get('announce_on_arm', True)
         self.announce_on_disarm = config.get('announce_on_disarm', True)
         self.arm_message = config.get('arm_message', 'Piano is now armed and ready for shopping')
@@ -85,7 +87,9 @@ class ArmingStateMachine:
         """Send announcement via HA satellite."""
         if self.ha_client:
             try:
-                result = await self.ha_client.announce(message, device_id=None, preannounce=False)
+                device_id = self.announce_config.get('device_id')
+                preannounce = self.announce_config.get('preannounce', False)
+                result = await self.ha_client.announce(message, device_id=device_id, preannounce=preannounce)
                 if result.success:
                     logger.info(f"Arming announcement sent: {message}")
                 else:
@@ -120,15 +124,16 @@ class ArmingStateMachine:
         if not self.enabled:
             return ArmingState.ARMED  # Always armed if disabled
         
-        self.last_activity = timestamp
-        
-        # Check auto-disarm timeout
+        # Check auto-disarm timeout BEFORE updating last_activity
         if self.state == ArmingState.ARMED:
             if self.disarm_after_ms > 0:
                 inactive_ms = (timestamp - self.last_activity) * 1000
                 if inactive_ms > self.disarm_after_ms:
                     logger.info(f"Auto-disarm after {inactive_ms:.0f}ms inactivity")
                     self.reset()
+        
+        # Update last activity timestamp
+        self.last_activity = timestamp
         
         # If already armed, stay armed
         if self.state == ArmingState.ARMED:
@@ -138,28 +143,29 @@ class ArmingStateMachine:
         if self.sequence:
             self._process_sequence(note, timestamp)
         
-        # Check if we should arm
+        # Check if we should arm (only check in on_note if sequence is configured)
+        # If only chord is configured, arming happens in on_chord()
         needs_sequence = bool(self.sequence)
         needs_chord = bool(self.chord)
         
-        if self.require_both:
-            # Need both sequence and chord
-            if self.armed_by_sequence and self.armed_by_chord:
-                previous_state = self.state
-                self.state = ArmingState.ARMED
-                logger.info("System ARMED (sequence + chord)")
-                if previous_state != ArmingState.ARMED and self.announce_on_arm:
-                    asyncio.create_task(self._announce(self.arm_message))
-        else:
-            # Need either sequence or chord
-            if (needs_sequence and self.armed_by_sequence) or \
-               (needs_chord and self.armed_by_chord):
-                previous_state = self.state
-                self.state = ArmingState.ARMED
-                trigger = "sequence" if self.armed_by_sequence else "chord"
-                logger.info(f"System ARMED ({trigger})")
-                if previous_state != ArmingState.ARMED and self.announce_on_arm:
-                    asyncio.create_task(self._announce(self.arm_message))
+        # Only check arming logic here if we have a sequence
+        if needs_sequence:
+            if self.require_both:
+                # Need both sequence and chord
+                if self.armed_by_sequence and self.armed_by_chord:
+                    previous_state = self.state
+                    self.state = ArmingState.ARMED
+                    logger.info("System ARMED (sequence + chord)")
+                    if previous_state != ArmingState.ARMED and self.announce_on_arm:
+                        asyncio.create_task(self._announce(self.arm_message))
+            else:
+                # Need either sequence or chord (but we know sequence exists here)
+                if self.armed_by_sequence:
+                    previous_state = self.state
+                    self.state = ArmingState.ARMED
+                    logger.info("System ARMED (sequence)")
+                    if previous_state != ArmingState.ARMED and self.announce_on_arm:
+                        asyncio.create_task(self._announce(self.arm_message))
         
         return self.state
     
@@ -179,10 +185,12 @@ class ArmingStateMachine:
         
         self.last_activity = timestamp
         
+        logger.info(f"Chord detected: {sorted(chord_notes)}, Expected: {sorted(self.chord)}")
+        
         # Check if chord matches
         if chord_notes == self.chord:
             self.armed_by_chord = True
-            logger.info(f"Arming chord detected: {sorted(chord_notes)}")
+            logger.info(f"Arming chord MATCHED: {sorted(chord_notes)}")
             
             # Check if we should arm now
             if not self.require_both or self.armed_by_sequence:
@@ -192,6 +200,8 @@ class ArmingStateMachine:
                 logger.info(f"System ARMED ({trigger})")
                 if previous_state != ArmingState.ARMED and self.announce_on_arm:
                     asyncio.create_task(self._announce(self.arm_message))
+        else:
+            logger.info(f"Chord did NOT match (got {sorted(chord_notes)}, expected {sorted(self.chord)})")
         
         return self.state
     
@@ -275,6 +285,7 @@ class Bridge:
         
         self.midi: Optional[MidiInput] = None
         self.ha_client: Optional[HAClient] = None
+        self.picnic_client: Optional[PicnicClient] = None
         
         self.arming_sm: Optional[ArmingStateMachine] = None
         self.rate_limiter: Optional[RateLimiter] = None
@@ -282,6 +293,10 @@ class Bridge:
         self.running = False
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.midi_reconnect_delay = 5  # default, overridden from config
+        
+        # File watching for mapping file
+        self.mapping_path: Optional[str] = None
+        self.mapping_last_modified = 0.0
     
     def load_config(self):
         """Load configuration from YAML files."""
@@ -291,13 +306,44 @@ class Bridge:
             self.config = yaml.safe_load(f)
         
         # Load mapping file
-        mapping_path = self.config.get('mapping_file', 'config/mapping.yaml')
-        logger.info(f"Loading mapping from {mapping_path}")
-        
-        with open(mapping_path, 'r') as f:
-            self.mapping = yaml.safe_load(f)
+        self.mapping_path = self.config.get('mapping_file', 'config/mapping.yaml')
+        self.reload_mapping()
         
         logger.info("Configuration loaded successfully")
+    
+    def reload_mapping(self):
+        """Reload mapping file and update last modified time."""
+        try:
+            logger.info(f"Loading mapping from {self.mapping_path}")
+            
+            with open(self.mapping_path, 'r') as f:
+                self.mapping = yaml.safe_load(f)
+            
+            # Update mapped keys
+            note_mappings = self.mapping.get('notes') or self.mapping.get('note_mappings', {})
+            mapped_count = len(note_mappings)
+            logger.info(f"Loaded {mapped_count} note mappings")
+            
+            # Update last modified time
+            import os
+            self.mapping_last_modified = os.path.getmtime(self.mapping_path)
+            
+        except Exception as e:
+            logger.error(f"Failed to reload mapping: {e}")
+    
+    def check_mapping_file_changed(self):
+        """Check if mapping file has been modified and reload if needed."""
+        try:
+            import os
+            if self.mapping_path and os.path.exists(self.mapping_path):
+                current_mtime = os.path.getmtime(self.mapping_path)
+                if current_mtime > self.mapping_last_modified:
+                    logger.info("Mapping file changed, reloading...")
+                    self.reload_mapping()
+                    return True
+        except Exception as e:
+            logger.error(f"Error checking mapping file: {e}")
+        return False
     
     def setup_logging(self):
         """Configure logging based on config."""
@@ -336,7 +382,8 @@ class Bridge:
         
         # Initialize arming state machine
         arming_config = self.config.get('arming', {})
-        self.arming_sm = ArmingStateMachine(arming_config)
+        announce_config = self.config.get('announce', {})
+        self.arming_sm = ArmingStateMachine(arming_config, announce_config)
         
         # Initialize rate limiter
         rate_limit_ms = midi_config.get('rate_limit_per_note_ms', 500)
@@ -350,7 +397,8 @@ class Bridge:
     
     def get_product_mapping(self, note: int) -> Optional[ProductMapping]:
         """Get product mapping for a note."""
-        note_mappings = self.mapping.get('notes', {})
+        # Support both 'notes' and 'note_mappings' keys for backward compatibility
+        note_mappings = self.mapping.get('notes') or self.mapping.get('note_mappings', {})
         defaults = self.mapping.get('defaults', {})
         
         # Try both integer and string keys (YAML can parse as either)
@@ -375,17 +423,20 @@ class Bridge:
         note = event.note
         timestamp = event.timestamp
         
+        logger.info(f"Note pressed: {note} (velocity={event.velocity})")
+        
         # Update arming state
         self.arming_sm.on_note(note, timestamp)
         
         # Check if armed
         if self.arming_sm.state != ArmingState.ARMED:
-            logger.debug(f"Ignoring note {note}: system not armed")
+            logger.info(f"Note {note} ignored: system not armed (state={self.arming_sm.state.name})")
             return
         
         # Get product mapping
         mapping = self.get_product_mapping(note)
         if not mapping:
+            logger.info(f"Note {note} ignored: no product mapping found")
             return
         
         # Check confirmation (double-tap)
@@ -428,11 +479,10 @@ class Bridge:
                 logger.info(f"  └─ message: '{message}'")
                 logger.info(f"  └─ preannounce: {preannounce}")
         else:
-            # Real mode: actual HA calls
-            result = await self.ha_client.add_product(
+            # Real mode: actual API calls
+            result = self.picnic_client.add_product(
                 product_id=mapping.product_id,
-                amount=mapping.amount,
-                config_entry_id=mapping.config_entry_id
+                amount=mapping.amount
             )
             result_success = result.success
             
@@ -471,6 +521,9 @@ class Bridge:
                 logger.info("MIDI device connected successfully")
                 
                 # Process events
+                last_mapping_check = time.time()
+                mapping_check_interval = 2.0  # Check every 2 seconds
+                
                 for event in self.midi.read_events():
                     if not self.running:
                         logger.info("Shutdown requested, stopping MIDI processing")
@@ -478,6 +531,11 @@ class Bridge:
                     
                     # Skip None events (polling timeouts)
                     if event is None:
+                        # Check if mapping file changed (during polling timeout)
+                        current_time = time.time()
+                        if current_time - last_mapping_check > mapping_check_interval:
+                            self.check_mapping_file_changed()
+                            last_mapping_check = current_time
                         continue
                     
                     try:
@@ -550,7 +608,7 @@ class Bridge:
         self.loop = asyncio.get_event_loop()
         
         if self.test_mode:
-            logger.info("Bridge starting in TEST MODE (no Home Assistant connection)")
+            logger.info("Bridge starting in TEST MODE (no Home Assistant or Picnic connection)")
         else:
             logger.info("Bridge starting...")
         
@@ -559,7 +617,27 @@ class Bridge:
         self.initialize()
         
         if not self.test_mode:
-            # Get HA credentials
+            # Get Picnic credentials
+            picnic_username = os.getenv('PICNIC_USERNAME')
+            picnic_password = os.getenv('PICNIC_PASSWORD')
+            
+            if not picnic_username or not picnic_password:
+                logger.error("PICNIC_USERNAME and PICNIC_PASSWORD environment variables not set")
+                return
+            
+            # Connect to Picnic
+            picnic_config = self.config.get('picnic', {})
+            country_code = picnic_config.get('country_code', 'NL')
+            
+            self.picnic_client = PicnicClient(picnic_username, picnic_password, country_code)
+            
+            if not await self.picnic_client.connect():
+                logger.error("Failed to connect to Picnic API")
+                return
+            
+            logger.info("Connected to Picnic API successfully")
+            
+            # Get HA credentials for announcements
             ha_config = self.config.get('ha', {})
             ha_url = ha_config.get('url')
             
@@ -573,7 +651,7 @@ class Bridge:
                 logger.error("Only 'env' token_source is currently supported")
                 return
             
-            # Connect to HA
+            # Connect to HA (for announcements only)
             runtime_config = self.config.get('runtime', {})
             reconnect_backoff = runtime_config.get('reconnect_backoff_ms', [500, 1000, 2000, 5000])
             
