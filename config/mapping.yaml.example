@@ -1,0 +1,98 @@
+# Default settings for all notes
+defaults:
+  amount: 1
+  # REQUIRED: Picnic integration config entry ID
+  # Find this in Home Assistant:
+  #   1. Go to Settings -> Devices & Services
+  #   2. Click on "Picnic" integration
+  #   3. Look at the URL bar, it will be: /config/integrations/integration/XXXXXXXX
+  #   4. Copy the XXXXXXXX part (the config entry ID)
+  config_entry_id: "01JEN4FWWJ123ABCDEF456789"  # CHANGE THIS!
+  confirmation: double_tap  # double_tap or single_tap
+
+# Note-to-product mappings
+# MIDI note numbers: C4=60, C#4=61, D4=62, D#4=63, E4=64, F4=65, F#4=66, G4=67, etc.
+notes:
+  60:  # Middle C
+    product_id: s1018231
+    product_name: "Picnic cola zero"
+    amount: 1
+    confirmation: double_tap
+  
+  61:  # C#
+    product_id: s1234567
+    product_name: "Bananas"
+    amount: 2
+    # Uses default confirmation (double_tap)
+  
+  62:  # D
+    product_id: s7654321
+    product_name: "Whole milk"
+    amount: 1
+  
+  63:  # D#
+    product_id: s1111111
+    product_name: "Bread"
+    amount: 1
+  
+  64:  # E
+    product_id: s2222222
+    product_name: "Eggs"
+    amount: 1
+  
+  65:  # F
+    product_id: s3333333
+    product_name: "Cheese"
+    amount: 1
+  
+  66:  # F#
+    product_id: s4444444
+    product_name: "Butter"
+    amount: 1
+  
+  67:  # G
+    product_id: s5555555
+    product_name: "Apples"
+    amount: 2
+  
+  68:  # G#
+    product_id: s6666666
+    product_name: "Oranges"
+    amount: 2
+  
+  69:  # A
+    product_id: s7777777
+    product_name: "Tomatoes"
+    amount: 1
+  
+  70:  # A#
+    product_id: s8888888
+    product_name: "Cucumber"
+    amount: 1
+  
+  71:  # B
+    product_id: s9999999
+    product_name: "Lettuce"
+    amount: 1
+  
+  # Add more notes as needed
+  # Use https://www.inspiredacoustics.com/en/MIDI_note_numbers_and_center_frequencies
+  # for note number reference
+
+# Control Change (CC) mappings (optional, for pedals or buttons)
+controls:
+  # Example: Sustain pedal to disarm
+  # cc64:
+  #   action: disarm
+  
+  # Example: Modulation wheel to toggle announcements
+  # cc1:
+  #   action: toggle_announce
+
+# Behavior settings
+behavior:
+  # Only trigger on first press (ignore held notes)
+  trigger_only_on_first_press: true
+  
+  # How to handle notes not in mapping: 'log' or 'ignore'
+  out_of_range_handling: log

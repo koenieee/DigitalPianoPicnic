@@ -1,0 +1,24 @@
+[Unit]
+Description=Picnic Product Search Web Interface
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/DigitalPianoPicnic
+Environment="PICNIC_USERNAME=your_email@example.com"
+Environment="PICNIC_PASSWORD=your_password_here"
+ExecStart=/home/pi/DigitalPianoPicnic/venv/bin/python3 /home/pi/DigitalPianoPicnic/tools/search_web_fast.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening (optional)
+# PrivateTmp=true
+# NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

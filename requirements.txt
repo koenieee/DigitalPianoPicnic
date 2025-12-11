@@ -1,0 +1,33 @@
+# MIDI library
+mido>=1.3.0
+
+# MIDI backend for mido (provides ALSA/JACK support on Linux)
+python-rtmidi>=1.5.0
+
+# YAML configuration parsing
+PyYAML>=6.0
+
+# Home Assistant API client
+# Note: If homeassistant-api is not maintained, we'll implement WebSocket manually
+homeassistant-api>=4.2.2
+
+# WebSocket client (fallback if homeassistant-api doesn't work)
+websockets>=12.0
+
+# Async I/O support
+asyncio>=3.4.3
+
+# Picnic product search (updated version with better authentication)
+python-picnic-api2>=1.0.0
+
+# Flask web framework for product search web interface
+flask>=3.0.0
+
+# Production WSGI server for Flask
+waitress>=3.0.0
+
+# Note: PyYAML is already listed above and is required for both the main bridge
+# and the web interface config saving feature
+
+# Note: On Raspberry Pi (Raspbian), also install system packages:
+# sudo apt-get install libasound2-dev python3-pip

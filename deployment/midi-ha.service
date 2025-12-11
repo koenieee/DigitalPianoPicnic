@@ -1,0 +1,23 @@
+[Unit]
+Description=MIDI to Home Assistant Bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/DigitalPianoPicnic
+Environment="HA_TOKEN=your_token_here"
+ExecStart=/home/pi/DigitalPianoPicnic/venv/bin/python3 /home/pi/DigitalPianoPicnic/src/bridge.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening (optional)
+# PrivateTmp=true
+# NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

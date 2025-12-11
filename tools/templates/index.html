@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Picnic Product Search</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛒 Picnic Product Search</h1>
+            <p>Find product IDs for your Digital Piano shopping cart</p>
+        </div>
+
+        <div class="content">
+            <div class="search-box">
+                <input type="text" id="searchInput" class="search-input"
+                    placeholder="Search for products (e.g., 'cola zero', 'milk')" autofocus>
+                <button class="search-button" onclick="searchProduct()">🔍 Search</button>
+            </div>
+
+            <div style="text-align: center; margin: 20px 0;">
+                <button onclick="openPrintableOverlay(); return false;" style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    border: none;
+                    padding: 15px 30px;
+                    border-radius: 8px;
+                    font-size: 16px;
+                    cursor: pointer;
+                    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+                    margin-right: 10px;
+                ">
+                    🖨️ Generate Printable Piano Overlay (122cm)
+                </button>
+                <button onclick="viewCart(); return false;" style="
+                    background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+                    color: white;
+                    border: none;
+                    padding: 15px 30px;
+                    border-radius: 8px;
+                    font-size: 16px;
+                    cursor: pointer;
+                    box-shadow: 0 4px 15px rgba(86, 171, 47, 0.4);
+                ">
+                    🛒 View Current Cart
+                </button>
+            </div>
+
+            <div class="loading" id="loading">
+                <p>🔍 Searching...</p>
+            </div>
+
+            <div class="results" id="results"></div>
+        </div>
+
+        <div class="footer">
+            Press Enter to search • Save directly to mapping.yaml
+        </div>
+    </div>
+
+    <!-- Piano Key Picker Modal -->
+    <div class="modal" id="keyPickerModal">
+        <div class="modal-content" style="max-width: 95%; padding: 20px;">
+            <div class="modal-header">
+                <h2 style="color: #333; margin: 0;">🎹 Select Piano Key - Click any key</h2>
+                <button class="modal-close" onclick="closeKeyPicker()">×</button>
+            </div>
+            <p style="color: #666; margin-bottom: 10px; text-align: center;">
+                Casio CDP-130 • 88 keys • A0 (21) to C8 (108)<br>
+                <strong style="color: #ff6b6b;">Red highlight = Middle C (60)</strong><br>
+                <em style="font-size: 0.9em; color: #999;">Note: Verify your keyboard's first/last keys match these
+                    notes</em>
+            </p>
+
+            <div id="pianoDisplay"></div>
+        </div>
+    </div>
+
+    <!-- Printable Overlay Modal -->
+    <div class="modal" id="printOverlayModal" style="display: none;">
+        <div class="modal-content" style="max-width: 98%; max-height: 95vh; overflow-y: auto; padding: 20px;">
+            <div class="modal-header">
+                <h2 style="color: #333; margin: 0;">🖨️ Printable Piano Overlay - 122cm</h2>
+                <button class="modal-close" onclick="closePrintOverlay()">×</button>
+            </div>
+            <p style="color: #666; margin-bottom: 10px; text-align: center;">
+                Print these pages on A4 paper (landscape) and tape them together above your piano keys<br>
+                <strong>Total width: 122cm • Scale: 1:1 (actual size)</strong>
+            </p>
+            <div style="text-align: center; margin: 20px 0;">
+                <button onclick="window.print()" style="
+                    background: #28a745;
+                    color: white;
+                    border: none;
+                    padding: 12px 25px;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    cursor: pointer;
+                    margin-right: 10px;
+                ">🖨️ Print All Pages</button>
+                <button onclick="closePrintOverlay()" style="
+                    background: #6c757d;
+                    color: white;
+                    border: none;
+                    padding: 12px 25px;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    cursor: pointer;
+                ">Close</button>
+            </div>
+
+            <div id="printableContent"></div>
+        </div>
+    </div>
+
+    <!-- Cart Modal -->
+    <div class="modal" id="cartModal" style="display: none;">
+        <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto; padding: 20px;">
+            <div class="modal-header">
+                <h2 style="color: #333; margin: 0;">🛒 Current Shopping Cart</h2>
+                <button class="modal-close" onclick="closeCart()">×</button>
+            </div>
+            <div id="cartContent" style="margin-top: 20px;">
+                <p style="text-align: center; color: #666;">Loading cart...</p>
+            </div>
+        </div>
+    </div>
+
+    <div
+        style="background: white; margin: 20px auto; max-width: 800px; padding: 20px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+        <h3 style="margin-bottom: 15px; color: #333;">🎹 Piano Key Reference (Casio CDP-130)</h3>
+        <p style="color: #666; margin-bottom: 15px; font-size: 0.9em;">
+            88-key weighted keyboard • MIDI note numbers 21-108
+        </p>
+        <div style="font-family: monospace; font-size: 0.85em; line-height: 1.8; color: #444;">
+            <div style="margin-bottom: 10px;">
+                <strong>Octaves (left to right):</strong>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px;">
+                <div>• <strong>Low Bass:</strong> A0(21) - B1(35)</div>
+                <div>• <strong>Bass:</strong> C2(36) - B2(47)</div>
+                <div>• <strong>Tenor:</strong> C3(48) - B3(59)</div>
+                <div>• <strong style="color: #667eea;">Middle C:</strong> <strong
+                        style="color: #667eea;">C4(60)</strong> - B4(71)</div>
+                <div>• <strong>Treble:</strong> C5(72) - B5(83)</div>
+                <div>• <strong>High:</strong> C6(84) - B6(95)</div>
+                <div>• <strong>Very High:</strong> C7(96) - C8(108)</div>
+            </div>
+            <div style="margin-top: 15px; padding: 12px; background: #f0f0f0; border-radius: 8px;">
+                <strong>💡 Tip:</strong> Middle C (60) is near the center of your keyboard, typically marked or
+                positioned centrally.
+                Count up or down from there: C=60, D=62, E=64, F=65, G=67, A=69, B=71 (then C5=72)
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+
+</html>

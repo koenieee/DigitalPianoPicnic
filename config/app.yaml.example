@@ -1,0 +1,112 @@
+# Home Assistant connection
+ha:
+  # WebSocket URL (use IP address if .local doesn't resolve)
+  url: ws://homeassistant.local:8123/api/websocket
+  
+  # Token source: 'env' to use HA_TOKEN environment variable, or 'file' for secrets.yaml
+  token_source: env
+
+# MIDI input configuration
+midi:
+  # Port name: empty string for auto-select, or exact name like "Digital Piano USB"
+  # Run 'python3 -c "import mido; print(mido.get_input_names())"' to list ports
+  port_name: ""
+  
+  # MIDI channel to listen on (1-16), or "all" for any channel
+  channel: 1
+  
+  # Trigger mode: only note_on with velocity>0 triggers actions
+  trigger_on: note_on
+  
+  # Debounce: suppress rapid repeated presses (milliseconds)
+  debounce_ms: 200
+  
+  # Rate limit: minimum time between actions for the same note (milliseconds)
+  rate_limit_per_note_ms: 500
+  
+  # Enable sustain pedal (CC64) processing (future feature)
+  sustain_cc64_enabled: false
+
+# Arming mechanism (password to enable shopping)
+arming:
+  enabled: true
+  
+  # Sequence: notes that must be played in order to arm
+  # Example: [60, 62, 64] = Middle C, D, E
+  # MIDI note numbers: C4=60, C#4=61, D4=62, D#4=63, E4=64, F4=65, etc.
+  sequence: [60, 62, 64]
+  
+  # Maximum time to complete the sequence (milliseconds)
+  sequence_timeout_ms: 3000
+  
+  # Chord: notes that must be pressed simultaneously to arm (alternative/additional)
+  # Example: [65, 69] = F + A
+  # Leave empty [] to disable chord arming
+  chord: []
+  
+  # Time window for chord detection (milliseconds)
+  chord_window_ms: 200
+  
+  # Require both sequence AND chord to arm (if false, either works)
+  require_both_sequence_and_chord: false
+  
+  # Auto-disarm after inactivity (milliseconds, 0 to disable)
+  disarm_after_ms: 60000
+  
+  # Disarm immediately after each product add (requires re-arming)
+  disarm_after_add: false
+  
+  # Voice announcements when system is armed/disarmed
+  announce_on_arm: true
+  announce_on_disarm: true
+  arm_message: "Piano is now armed and ready for shopping"
+  disarm_message: "Piano has been disarmed"
+
+# Confirmation settings (double-tap requirement)
+confirmation:
+  # Require double-tap to add products
+  double_tap_enabled: true
+  
+  # Time window for second tap (milliseconds)
+  double_tap_window_ms: 800
+  
+  # Allow per-note override in mapping.yaml
+  per_note_override_allowed: true
+
+# Voice announcement settings
+announce:
+  enabled: true
+  
+  # Home Assistant device ID for Assist Satellite
+  # Find in HA UI: Settings -> Devices -> Your Satellite -> Device ID in URL
+  device_id: 4f17bb6b7102f82e8a91bf663bcb76f9
+  
+  # Preannounce: play chime before message
+  preannounce: false
+  
+  # Message template (use {product_name} placeholder)
+  message_template: "{product_name} was added to basket"
+
+# Path to note mapping file
+mapping_file: config/mapping.yaml
+
+# Logging configuration
+logging:
+  # Level: DEBUG, INFO, WARNING, ERROR
+  level: INFO
+  
+  # Mode: 'stdout' for console, or file path like '/var/log/midi-ha.log'
+  mode: stdout
+
+# Runtime behavior
+runtime:
+  # Reconnection backoff sequence (milliseconds) for Home Assistant
+  reconnect_backoff_ms: [500, 1000, 2000, 5000]
+  
+  # MIDI reconnection delay (seconds)
+  # If keyboard is unplugged/powered off, system will retry after this delay
+  # Note: Arming state is automatically reset when device disconnects
+  midi_reconnect_delay_sec: 5
+  
+  # Batch mode: aggregate multiple presses before submitting (future feature)
+  batch_mode: false
