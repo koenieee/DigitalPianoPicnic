@@ -239,7 +239,27 @@ class HAClient:
             service_data['config_entry_id'] = config_entry_id
         
         logger.info(f"Adding product: {product_id} x{amount}")
-        return await self.call_service('picnic', 'add_product', service_data)
+        
+        # Try to reconnect if not authenticated
+        if not self.authenticated:
+            logger.warning("Not authenticated, attempting to reconnect...")
+            if not await self.connect():
+                return ServiceCallResult(
+                    success=False,
+                    error_code='connection_failed',
+                    error_message='Failed to reconnect to Home Assistant'
+                )
+        
+        result = await self.call_service('picnic', 'add_product', service_data)
+        
+        # If call failed due to connection issue, try to reconnect
+        if not result.success and result.error_code == 'exception':
+            logger.warning("Service call failed with exception, attempting to reconnect...")
+            if await self.connect():
+                # Retry once after reconnection
+                result = await self.call_service('picnic', 'add_product', service_data)
+        
+        return result
     
     async def announce(
         self,
@@ -268,7 +288,27 @@ class HAClient:
         }
         
         logger.info(f"Announcing: '{message}' to device {device_id}")
-        return await self.call_service('assist_satellite', 'announce', service_data, target)
+        
+        # Try to reconnect if not authenticated
+        if not self.authenticated:
+            logger.warning("Not authenticated, attempting to reconnect...")
+            if not await self.connect():
+                return ServiceCallResult(
+                    success=False,
+                    error_code='connection_failed',
+                    error_message='Failed to reconnect to Home Assistant'
+                )
+        
+        result = await self.call_service('assist_satellite', 'announce', service_data, target)
+        
+        # If call failed due to connection issue, try to reconnect
+        if not result.success and result.error_code == 'exception':
+            logger.warning("Service call failed with exception, attempting to reconnect...")
+            if await self.connect():
+                # Retry once after reconnection
+                result = await self.call_service('assist_satellite', 'announce', service_data, target)
+        
+        return result
     
     async def reconnect_loop(self, max_attempts: int = 0) -> bool:
         """
